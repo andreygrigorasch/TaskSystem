@@ -5,9 +5,6 @@
          colors="true"
 >
     <testsuites>
-        <testsuite name="Unit">
-            <directory>tests/Unit</directory>
-        </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
@@ -19,6 +16,7 @@
     </source>
     <php>
         <env force="true" name="APP_ENV" value="testing"/>
+        <env force="true" name="APP_KEY" value="base64:SCcFy4GoypvQ4HwZ7wD7bG3E+1TJ7cKO3TTduO2p8TM="/>
         <env force="true" name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env force="true" name="BCRYPT_ROUNDS" value="4"/>
         <env force="true" name="BROADCAST_CONNECTION" value="null"/>

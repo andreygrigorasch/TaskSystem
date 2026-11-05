@@ -1,0 +1,91 @@
+name: Project checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application:
+    name: PHP 8.3, PostgreSQL 17 and frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: request_desk_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d request_desk_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: request_desk_test
+      DB_USERNAME: app
+      DB_PASSWORD: secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@d52fc211a0436f8839a587b3b5b8efddab4744ea # v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, mbstring, dom, xml, xmlwriter, fileinfo
+          coverage: none
+          tools: composer:v2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Validate Composer files
+        run: composer validate --strict
+      - name: Check PHP formatting
+        run: php vendor/bin/pint --test
+      - name: Run API and PostgreSQL concurrency tests
+        run: composer test
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Check TypeScript and build frontend
+        run: npm run build
+
+  docker:
+    name: Docker startup and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+      - name: Build and start from a clean checkout without .env
+        run: docker compose up --build --detach --wait --wait-timeout 180
+      - name: Check the HTTP entry point
+        run: curl --fail --silent --show-error --retry 20 --retry-all-errors --retry-delay 2 --output /dev/null http://127.0.0.1:8000/login
+      - name: Run tests inside the PHP 8.3 container
+        run: docker compose exec -T app composer test
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+      - name: Stop the disposable test environment
+        if: always()
+        run: docker compose down --volumes
